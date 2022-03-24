@@ -31,6 +31,7 @@ const (
 	secretScanIndexName     = "secret-scan"
 	secretScanLogsIndexName = "secret-scan-logs"
 	ssEbpfExePath           = "/home/deepfence/bin/SecretScanner"
+	ssEbpfExePathServerless = "/deepfence/bin/SecretScanner"
 	ssEbpfLogPath           = "/var/log/fenced/secretScanner.log"
 	memLockSize             = "--memlock=8388608"
 	ebpfOptFormat           = "--socket-path=%s"
@@ -268,7 +269,13 @@ type SecretScanner struct {
 
 func NewSecretScanner() (*SecretScanner, error) {
 	ebpfSocket := generateSocketString()
-	command := exec.Command("prlimit", memLockSize, ssEbpfExePath, fmt.Sprintf(ebpfOptFormat, ebpfSocket))
+	scannerExePath := ssEbpfExePath
+	scannerLogPath := ssEbpfLogPath
+	if os.Getenv("DF_SERVERLESS") == "true" {
+		scannerExePath = ssEbpfExePathServerless
+		scannerLogPath = getDfInstallDir() + ssEbpfLogPath
+	}
+	command := exec.Command("prlimit", memLockSize, scannerExePath, fmt.Sprintf(ebpfOptFormat, ebpfSocket))
 
 	cmdReader, err := command.StderrPipe()
 	if err != nil {
@@ -277,7 +284,7 @@ func NewSecretScanner() (*SecretScanner, error) {
 
 	scanner := bufio.NewScanner(cmdReader)
 	go func() {
-		f, _ := os.Create(ssEbpfLogPath)
+		f, _ := os.Create(scannerLogPath)
 		defer f.Close()
 		for scanner.Scan() {
 			f.WriteString(scanner.Text() + "\n")
